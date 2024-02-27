@@ -55,7 +55,7 @@ The metadata for each piece is stored in yaml. Here is an example:
 midi_file: 233461.mid # The file name (ID) of the MIDI.
 tempo: 88 # Tempo of the MIDI.
 ensemble: brass # Ensemble of the piece, one of four ensembles: "string, brass, woodwind, random".
-instrument_name: # Instrument name. Keys are the voice ID, in 0-3 in the order of SATB.
+instrument_name: # Instrument name. Keys are the voice ID, in 0-3 in the order of SATB(abbreviation for. soprano, alto, tenor, bass).
   0: trumpet
   1: horn
   2: trombone
