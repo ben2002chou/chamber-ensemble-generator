@@ -1,4 +1,5 @@
 from music21 import *
+import math
 import pretty_midi as pm
 import numpy as np
 from scipy.stats import truncnorm
@@ -23,6 +24,7 @@ def make_instrument_mono(instrument):
         None
     """
     all_notes = instrument.notes
+    all_notes.sort(key=(lambda x : x.start))
     for i in range(len(all_notes)):
         if i != len(all_notes) - 1:
             if all_notes[i].end > all_notes[i + 1].start:
@@ -89,6 +91,9 @@ def add_pitch_bends(midi, lambda_occur, mean_delta, stdev_delta, step_size):
                         * (j / (n_points_to_add + 1))
                     )
                 )
+                p = 1 - (j / (n_points_to_add + 1)) / 1.3
+                print(p)
+                bend =  int(math.copysign(1, bend) * pow(abs(bend), p))
                 if bend > 8191:
                     bend = 8191
                 elif bend < -8192:
@@ -168,6 +173,7 @@ def add_screwups(
         occurrences = rng.poisson(lam=lambda_occur * inst.notes[-1].end)
         print(f"occurrences: {occurrences}")
         print(f"instrument: {inst.name}")
+        notes_to_add = []
         for _ in range(occurrences):
             if len(inst.notes) == 0:
                 break
@@ -182,20 +188,30 @@ def add_screwups(
                 screwup_type = fixed_screwup_type
             else:
                 screwup_type = rng.integers(
-                    0, 3
-                )  # Now includes 0, 1, 2, and 3 as screwup types
+                    0, 16
+                )  # Now includes 0, 1, 2, 3, 4 as screwup types
+                # Use bitwise ops to allow multiple types of events to happen at once
 
             if screwup_type == 0:  # Didn't play notes
                 del inst.notes[idx]
 
-            elif screwup_type == 1:  # Messed up pitches
+            if screwup_type & 1 == 1:  # Messed up pitches and player doesn't fix it
                 pitch_delta = 0
                 while -1 < pitch_delta < 1:
                     pitch_delta = int(rng.normal(loc=0, scale=stdev_pitch_delta))
                 note.pitch = np.clip(note.pitch + int(pitch_delta), 0, 127)
-
-            elif screwup_type == 2:  # Add extra notes
-                add_extra_note(
+            
+            elif screwup_type & 2 == 2:  # Messed up pitches and player fixes it quickly
+                pitch_delta = 0
+                while -1 < pitch_delta < 1:
+                    pitch_delta = int(rng.normal(loc=0, scale=stdev_pitch_delta))
+                initial_note_dur = note_duration / 10.0 + rng.uniform(low=-1 * note_duration / 50.0, high= note_duration / 50.0)
+                end_time = note.end
+                note.end = note.start + initial_note_dur
+                notes_to_add.append(pm.Note(start=note.end, end=end_time, pitch=note.pitch, velocity=note.velocity))
+                note.pitch = np.clip(note.pitch + int(pitch_delta), 0, 127)
+            if screwup_type & 4 == 4:  # Add extra notes
+                notes_list = get_extra_notes(
                     inst,
                     note,
                     idx,
@@ -205,8 +221,10 @@ def add_screwups(
                     allow_overlap,
                     shift_probability,
                 )
+                for note2 in notes_list:
+                    notes_to_add.append(note2)
 
-            elif screwup_type == 3:  # Timing inaccuracies
+            if screwup_type & 8 == 8:  # Timing inaccuracies
                 add_timing_inaccuracies(
                     inst,
                     note,
@@ -217,14 +235,16 @@ def add_screwups(
                     allow_overlap,
                     shift_probability,
                     config,
+                    midi,
                 )
-
+        for note in notes_to_add:
+            inst.notes.append(note)
         inst.notes.sort(key=lambda x: x.start)
         if allow_overlap is False:
             make_instrument_mono(inst)
 
 
-def add_extra_note(
+def get_extra_notes(
     inst,
     note,
     idx,
@@ -234,6 +254,7 @@ def add_extra_note(
     allow_overlap,
     shift_probability,
 ):
+    notes_to_add = []
     rng = np.random.default_rng()
     note_duration = note.end - note.start
     duration_var = rng.gamma(
@@ -273,12 +294,14 @@ def add_extra_note(
         start=start_time,
         end=start_time + duration,
     )
-    inst.notes.append(extra_note)
+    notes_to_add.append(extra_note)
 
     # Debugging: Confirm addition and sorting
     print(f"Added extra note: {extra_note}")
     inst.notes.sort(key=lambda x: x.start)
     print(f"Notes sorted. Number of notes for instrument: {len(inst.notes)}")
+
+    return notes_to_add
 
 
 def add_timing_inaccuracies(
@@ -291,14 +314,16 @@ def add_timing_inaccuracies(
     allow_overlap,
     shift_probability,
     config,
+    midi,
 ):
+    
     rng = np.random.default_rng()
     note_duration = note.end - note.start
     duration_var = rng.gamma(
         shape=mean_duration / (stdev_duration**2),
         scale=stdev_duration**2,
     )
-    current_tempo = midi.estimate_tempo()  # Simplification: assuming a constant tempo
+    current_tempo = midi.estimate_tempo()
     error_range = get_thirty_second_note_duration(
         current_tempo, midi
     )  # for timing, start time should be +- 1/32 of a beat for a decent player
