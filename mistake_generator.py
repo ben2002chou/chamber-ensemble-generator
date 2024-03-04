@@ -12,8 +12,7 @@ def generate_mistakes(midi_path):
     pb = True
     overlap = False
     for inst in midi.instruments:
-        name = pretty_midi.program_to_instrument_name(inst.program)
-        if "piano" in name.lower():
+        if "piano" in inst.name.lower():
             pb = False
             overlap = True
     add_screwups(
