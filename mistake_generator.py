@@ -43,6 +43,6 @@ def generate_mistakes(midi_path):
     midi.write(modified_midi_path)
 
 
-generate_mistakes(
-    "ode2joy.midi"
-)
+if __name__ == "__main__":
+    path = input("Enter a path:\n")
+    generate_mistakes(path)

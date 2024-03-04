@@ -92,7 +92,7 @@ def add_pitch_bends(midi, lambda_occur, mean_delta, stdev_delta, step_size):
                     )
                 )
                 p = 1 - (j / (n_points_to_add + 1)) / 1.3
-                print(p)
+                # print(p)
                 bend =  int(math.copysign(1, bend) * pow(abs(bend), p))
                 if bend > 8191:
                     bend = 8191
